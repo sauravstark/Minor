@@ -134,13 +134,42 @@ var searchinDB = function (arg_json) {
 	})
 }
 
+function saveRecord(response, arg_json) {
+	console.log(response)
+	console.log(arg_json)
+	var record = {
+		algo: arg_json.algo,
+		dataset: arg_json.dataset,
+		train_ratio: arg_json.train_ratio,
+		accuracy: response
+	}
+
+	switch (arg_json.algo) {
+		case "KNN":
+				record.config = {
+					n_neighbors: arg_json.n_neighbors,
+					weight: arg_json.weight,
+					power_parameter: arg_json.power_parameter
+				}
+				var new_doc = new KNNmodel(record)
+				new_doc.save(function(err) {
+					console.log(err)
+				})
+			break;
+	
+		default:
+			break;
+	}
+}
+
 app.post('/run_script', (req, res) => {
 	var arg_json = create_arg_json(req.body)
 	searchinDB(arg_json).then(function successCallback(response) {
-		res.send(response)
+		res.send({accuracy: response.accuracy})
 	}, function errorCallback(error) {
 		run_script(arg_json).then(function successCallback(response) {
-			res.send(response)
+			res.send({accuracy: Number(response)})
+			saveRecord(response, arg_json)
 		}, function errorCallback(error) {
 			res.send(error)
 		})
