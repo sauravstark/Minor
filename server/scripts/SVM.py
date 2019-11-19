@@ -7,14 +7,15 @@ arg_json = json.loads(inp)
 
 dataset = arg_json['dataset']
 train_ratio = arg_json['train_ratio']
-n_neighbors = arg_json['n_neighbors']
-weight = arg_json['weight']
-power_parameter = arg_json['power_parameter']
+kernel = arg_json['kernel']
+gamma = arg_json['gamma']
+regularization = arg_json['regularization']
 
 import numpy as np
 import pandas as pd
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.preprocessing import scale
 from sklearn import metrics
 
 train = pd.read_csv("../datasets/" + dataset + ".csv")
@@ -34,13 +35,13 @@ random_seed = 2
 test_ratio = 0.1
 
 X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size = test_ratio, train_size = train_ratio, random_state=random_seed)
-train_size = X_train.shape[0]
-test_size = X_test.shape[0]
+X_train_scaled = scale(X_train)
+X_test_scaled = scale(X_test)
 
-knn = KNeighborsClassifier(n_neighbors=n_neighbors, p=power_parameter, weights=weight)
-knn.fit(X_train, Y_train)
-
-Y_pred = knn.predict(X_test)
+model = SVC(C=regularization, kernel=kernel, gamma=gamma)
+model.fit(X_train_scaled, Y_train)
+Y_pred = model.predict(X_test_scaled)
 
 print(metrics.accuracy_score(y_true=Y_test, y_pred=Y_pred) * 100)
-#Terminal command: scripts/KNN.py '{ \"algo\": \"KNN\", \"dataset\": \"MNIST - Digits\", \"train_ratio\": 0.05, \"n_neighbors\": 1, \"weight\": \"uniform\", \"power_parameter\": 1 }'
+
+#Terminal command: python scripts/SVM.py '{ \"algo\": \"SVM\", \"dataset\": \"MNIST - Digits\", \"train_ratio\": 0.05, \"kernel\": \"linear\", \"gamma\": 1e2, \"regularization\": 1e1 }'
