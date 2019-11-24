@@ -3,6 +3,7 @@ const bodyParser = require('body-parser')
 const cors = require('cors')
 const morgan = require('morgan')
 const spawn = require('child_process').spawn
+const util = require('util')
 
 const app = express()
 app.use(morgan('combined'))
@@ -14,8 +15,9 @@ mongodb_conn_module.connect()
 
 var algorithms_arr = undefined
 var dataset_arr = undefined
+var running_scripts_arr = []
 
-var KNNmodel = require("../models/knn")
+var RecordsModel = require("../models/records")
 
 algodsModel = require("../models/algorithms_and_datasets")
 
@@ -32,7 +34,7 @@ algodsModel.getAlgorithms().then(function successCallback(response) {
 })
 
 app.get('/records', (req, res) => {
-	KNNmodel.find({}, function (err, docs) {
+	RecordsModel.find({}, function (err, docs) {
 		if (err) {
 			console.error(err)
 		}
@@ -42,7 +44,7 @@ app.get('/records', (req, res) => {
 	}).sort({ accuracy: -1 })
 })
 
-function create_arg_json(req_body) {	
+function create_arg_json(req_body) {
 	if (algorithms_arr.map(el => el.name).includes(req_body.algo) && 
 		dataset_arr.map(el => el.name).includes(req_body.dataset) &&
 		(Math.ceil(req_body.train_ratio * 20) == req_body.train_ratio * 20) &&
@@ -57,10 +59,26 @@ function create_arg_json(req_body) {
 			return el.name === req_body.algo
 		  })
 		for (var prop in algo_details.params) {
-			if (algo_details.params[prop].includes(req_body[prop])) {
-				ret_val[prop] = req_body[prop]
+			if (Array.isArray(algo_details.params[prop])) {
+				if (algo_details.params[prop].includes(req_body[prop])) {
+					ret_val[prop] = req_body[prop]
+				} else {
+					return undefined
+				}
 			} else {
-				return undefined
+				console.log(algo_details.params[prop])
+				if (algo_details.params[prop].count.includes(req_body[prop].length)) {
+					ret_val[prop] = []
+					req_body[prop].forEach(element => {
+						if (algo_details.params[prop].values.includes(element)) {
+							ret_val[prop].push(element)
+						} else {
+							return undefined
+						}
+					})
+				} else {
+					return undefined
+				}
 			}
 		}
 		return ret_val
@@ -79,18 +97,38 @@ function run_script(arg_json) {
 				child = spawn('python', [script_path, JSON.stringify(arg_json)])
 				break
 
-			//TODO SVM, MLP, CNN
+			case "SVM":
+				script_path += "SVM.py"
+				child = spawn('python', [script_path, JSON.stringify(arg_json)])
+				break
+
+			case "MLP":
+				script_path += "MLP.py"
+				child = spawn('python', [script_path, JSON.stringify(arg_json)])
+				break
+
+			case "CNN":
+				script_path += "CNN.py"
+				child = spawn('python', [script_path, JSON.stringify(arg_json)])
+				break
+
 			default:
 				break
 		}
 
 		if (child !== undefined) {
+			var output = ''
 			child.stdout.on('data', (data) => {
-				accuracy = data.toString()
+				output += data.toString()
 			})
 			child.on('exit', code => {
 				if (code === 0) {
-					resolve(accuracy)
+					var arr = RegExp('(?<=Accuracy: )\d+(?:\.\d+)').exec(output)
+					if (arr !== null) {
+						resolve(arr[0])
+					} else {
+						reject("Could not run script!")
+					}
 				} else {
 					reject("Could not run script!")
 				}
@@ -115,7 +153,7 @@ var searchinDB = function (arg_json) {
 					weight: arg_json.weight,
 					power_parameter: arg_json.power_parameter
 				}
-				KNNmodel.findOne(search_param, function (err, docs) {
+				RecordsModel.findOne(search_param, function (err, docs) {
 					if (err) {
 						reject(err)
 					} else if (docs === null) {
@@ -123,12 +161,61 @@ var searchinDB = function (arg_json) {
 					} else {
 						resolve(docs)
 					}
-					console.log("docs")
-					console.log(docs)
+				})
+				break
+			
+			case "SVM":
+				search_param.config = {
+					kernel: arg_json.kernel,
+					regularization: arg_json.regularization,
+					gamma: arg_json.gamma
+				}
+				RecordsModel.findOne(search_param, function (err, docs) {
+					if (err) {
+						reject(err)
+					} else if (docs === null) {
+						reject("Record not found")
+					} else {
+						resolve(docs)
+					}
+				})
+				break
+
+			case "MLP":
+				search_param.config = {
+					hidden_layers: arg_json.hidden_layers,
+					activation: arg_json.activation
+				}
+				RecordsModel.findOne(search_param, function (err, docs) {
+					if (err) {
+						reject(err)
+					} else if (docs === null) {
+						reject("Record not found")
+					} else {
+						resolve(docs)
+					}
+				})
+				break
+
+			case "CNN":
+				search_param.config = {
+					convolution_layers: arg_json.convolution_layers,
+					fully_connected_layers: arg_json.fully_connected_layers,
+					epoch_count: arg_json.epoch_count
+				}
+				RecordsModel.findOne(search_param, function (err, docs) {
+					if (err) {
+						reject(err)
+					} else if (docs === null) {
+						reject("Record not found")
+					} else {
+						resolve(docs)
+					}
 				})
 				break
 
 			default:
+				reject("Record not found")
 				break
 		}
 	})
@@ -146,34 +233,84 @@ function saveRecord(response, arg_json) {
 
 	switch (arg_json.algo) {
 		case "KNN":
-				record.config = {
-					n_neighbors: arg_json.n_neighbors,
-					weight: arg_json.weight,
-					power_parameter: arg_json.power_parameter
-				}
-				var new_doc = new KNNmodel(record)
-				new_doc.save(function(err) {
-					console.log(err)
-				})
-			break;
+			record.config = {
+				n_neighbors: arg_json.n_neighbors,
+				weight: arg_json.weight,
+				power_parameter: arg_json.power_parameter
+			}
+			var new_doc = new RecordsModel(record)
+			new_doc.save(function(err) {
+				console.log(err)
+			})
+			break
+		
+		case "SVM":
+			record.config = {
+				kernel: arg_json.kernel,
+				regularization: arg_json.regularization,
+				gamma: arg_json.gamma
+			}
+			var new_doc = new RecordsModel(record)
+			new_doc.save(function(err) {
+				console.log(err)
+			})
+			break
+
+		case "MLP":
+			record.config = {
+				hidden_layers: arg_json.hidden_layers,
+				activation: arg_json.activation
+			}
+			var new_doc = new RecordsModel(record)
+			new_doc.save(function(err) {
+				console.log(err)
+			})
+			break
+
+		case "CNN":
+			record.config = {
+				convolution_layers: arg_json.convolution_layers,
+				fully_connected_layers: arg_json.fully_connected_layers,
+				epoch_count: arg_json.epoch_count
+			}
+			var new_doc = new RecordsModel(record)
+			new_doc.save(function(err) {
+				console.log(err)
+			})
+			break
 	
 		default:
-			break;
+			break
 	}
 }
 
 app.post('/run_script', (req, res) => {
 	var arg_json = create_arg_json(req.body)
-	searchinDB(arg_json).then(function successCallback(response) {
-		res.send({accuracy: response.accuracy})
-	}, function errorCallback(error) {
-		run_script(arg_json).then(function successCallback(response) {
-			res.send({accuracy: Number(response)})
-			saveRecord(response, arg_json)
+	if (running_scripts_arr.includes(arg_json)) {
+		res.send({ status: "running" })
+	} else {
+		searchinDB(arg_json).then(function successCallback(response) {
+			res.send({
+				status: "ready",
+				accuracy: response.accuracy
+			})
 		}, function errorCallback(error) {
-			res.send(error)
+			res.send({ status: "running" })
+			run_script(arg_json).then(function successCallback(response) {
+				let index = running_scripts_arr.indexOf(arg_json)
+				if (index !== -1) {
+					running_scripts_arr.splice(index, 1)
+				}
+				saveRecord(response, arg_json)
+			}, function errorCallback(error) {
+				let index = running_scripts_arr.indexOf(arg_json)
+				if (index !== -1) {
+					running_scripts_arr.splice(index, 1)
+				}
+				console.log(error)
+			})
 		})
-	})
+	}
 })
 
 app.listen(process.env.PORT || 8081)

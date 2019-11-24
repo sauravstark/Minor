@@ -42,6 +42,6 @@ model = SVC(C=regularization, kernel=kernel, gamma=gamma)
 model.fit(X_train_scaled, Y_train)
 Y_pred = model.predict(X_test_scaled)
 
-print(metrics.accuracy_score(y_true=Y_test, y_pred=Y_pred) * 100)
+print("Accuracy: {0}".format(metrics.accuracy_score(y_true=Y_test, y_pred=Y_pred) * 100))
 
 #Terminal command: python scripts/SVM.py '{ \"algo\": \"SVM\", \"dataset\": \"MNIST - Digits\", \"train_ratio\": 0.05, \"kernel\": \"linear\", \"gamma\": 1e2, \"regularization\": 1e1 }'

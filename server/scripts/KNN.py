@@ -34,13 +34,12 @@ random_seed = 2
 test_ratio = 0.1
 
 X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size = test_ratio, train_size = train_ratio, random_state=random_seed)
-train_size = X_train.shape[0]
-test_size = X_test.shape[0]
 
 knn = KNeighborsClassifier(n_neighbors=n_neighbors, p=power_parameter, weights=weight)
 knn.fit(X_train, Y_train)
 
 Y_pred = knn.predict(X_test)
 
-print(metrics.accuracy_score(y_true=Y_test, y_pred=Y_pred) * 100)
-#Terminal command: scripts/KNN.py '{ \"algo\": \"KNN\", \"dataset\": \"MNIST - Digits\", \"train_ratio\": 0.05, \"n_neighbors\": 1, \"weight\": \"uniform\", \"power_parameter\": 1 }'
+print("Accuracy: {0}".format(metrics.accuracy_score(y_true=Y_test, y_pred=Y_pred) * 100))
+
+#Terminal command: python scripts/KNN.py '{ \"algo\": \"KNN\", \"dataset\": \"MNIST - Digits\", \"train_ratio\": 0.05, \"n_neighbors\": 1, \"weight\": \"uniform\", \"power_parameter\": 1 }'
